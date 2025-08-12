@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - GITCODE_BASE=${GITCODE_BASE:-https://gitcode.net/api/v5}
+      - BOT_TOKEN=${BOT_TOKEN}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - ALLOWED_USERS=${ALLOWED_USERS:-}
+      - ALLOWED_REPOS=${ALLOWED_REPOS:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEBUG=${DEBUG:-false}
+    volumes:
+      - ../gateway:/app/gateway
+      - ../worker:/app/worker
+    restart: unless-stopped
+    depends_on:
+      - redis
+    networks:
+      - agent-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - agent-network
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      - GITCODE_BASE=${GITCODE_BASE:-https://gitcode.net/api/v5}
+      - BOT_TOKEN=${BOT_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEBUG=${DEBUG:-false}
+    volumes:
+      - ../worker:/app/worker
+    restart: unless-stopped
+    depends_on:
+      - redis
+    networks:
+      - agent-network
+    # Worker runs as needed, not as a daemon
+    deploy:
+      replicas: 0
+
+volumes:
+  redis_data:
+
+networks:
+  agent-network:
+    driver: bridge

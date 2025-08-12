@@ -1,0 +1,39 @@
+# Bug Fix Agent Dependencies
+
+# Core Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# HTTP Client
+requests>=2.31.0
+httpx>=0.25.0
+
+# Git Operations  
+GitPython>=3.1.0
+
+# Template Rendering
+jinja2>=3.1.0
+
+# Async Support
+aiofiles>=23.2.0
+
+# Background Tasks (optional for demo)
+celery>=5.3.0
+redis>=5.0.0
+
+# Data Handling
+pydantic>=2.5.0
+
+# Security
+cryptography>=41.0.0
+PyJWT>=2.8.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Logging
+structlog>=23.2.0
+
+# Development
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
