@@ -10,8 +10,7 @@ from typing import Dict, Any, Optional, List
 def render_progress_panel(issue_number: int, actor: str, job_id: str, 
                          initialized: bool = False, locate: bool = False, 
                          propose: bool = False, fix: bool = False, 
-                         verify: bool = False, deploy: bool = False, 
-                         ready: bool = False) -> str:
+                         verify: bool = False, ready: bool = False) -> str:
     """Render PR progress panel"""
     
     def checkbox(checked: bool) -> str:
@@ -19,13 +18,12 @@ def render_progress_panel(issue_number: int, actor: str, job_id: str,
     
     panel = f"""## 🤖 Agent Progress
 
-- [{checkbox(initialized)}] Initialized
-- [{checkbox(locate)}] Locate
-- [{checkbox(propose)}] Propose  
-- [{checkbox(fix)}] Fix
-- [{checkbox(verify)}] Verify
-- [{checkbox(deploy)}] Deploy
-- [{checkbox(ready)}] Ready for review
+- [{checkbox(initialized)}] **Initialized** - Repository and branch setup
+- [{checkbox(locate)}] **Locate** - Identify problem files and root cause
+- [{checkbox(propose)}] **Propose** - Generate detailed fix strategy
+- [{checkbox(fix)}] **Fix** - Apply code modifications
+- [{checkbox(verify)}] **Verify** - Validate changes and test results
+- [{checkbox(ready)}] **Ready** - Complete and ready for review
 
 ### 📋 Task Info
 - **Issue:** #{issue_number}
@@ -34,12 +32,12 @@ def render_progress_panel(issue_number: int, actor: str, job_id: str,
 - **Created:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
 
 ### 📁 Generated Files
-- `agent/analysis.md` - Problem analysis
-- `agent/patch_plan.json` - Fix strategy
-- `agent/report.txt` - Verification results
+- `agent/analysis.md` - Detailed problem analysis and diagnosis
+- `agent/patch_plan.json` - Comprehensive fix strategy and implementation plan
+- `agent/report.txt` - Verification results and change validation
 
 ---
-*🚀 This is an automated bug fix by Agent Demo*"""
+*🚀 Automated bug analysis and fix by Agent*"""
     
     return panel
 

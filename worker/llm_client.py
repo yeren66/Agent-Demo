@@ -16,7 +16,14 @@ class LLMClient:
         self.base_url = base_url or os.getenv("LLM_BASE_URL", "https://api.geekai.pro/v1/chat/completions")
         self.api_key = api_key or os.getenv("LLM_API_KEY", "sk-SnbItL2wOmzHVHOl55A7B609Bc7c4c04Ac2885325aFeB98d")
         self.model = model or os.getenv("LLM_MODEL", "gpt-4o-mini")
-        self.client = httpx.AsyncClient(timeout=60.0)
+        
+        # Setup proxy configuration for httpx
+        proxy_url = os.getenv('HTTP_PROXY') or os.getenv('HTTPS_PROXY') or 'http://127.0.0.1:7890'
+        if proxy_url:
+            self.client = httpx.AsyncClient(timeout=60.0, proxy=proxy_url)
+            logger.info(f"LLM Client using proxy: {proxy_url}")
+        else:
+            self.client = httpx.AsyncClient(timeout=60.0)
     
     async def chat_completion(self, messages: List[Dict[str, str]], model: Optional[str] = None, max_tokens: int = 1000) -> Optional[str]:
         """Make a chat completion request"""

@@ -26,36 +26,46 @@ class GitOps:
             logger.warning(f"Git config setup failed: {e}")
     
     async def clone_repo(self, clone_url: str, destination: str) -> bool:
-        """Clone repository"""
+        """Clone repository using authenticated URL with proxy support"""
         try:
             logger.info(f"Cloning repository to {destination}")
             
-            # 支持GitHub和GitCode的认证URL格式
-            platform = os.getenv('PLATFORM', 'github').lower()
-            if platform == 'github':
-                token = os.getenv('GITHUB_TOKEN')
-                # GitHub格式: https://token@github.com/owner/repo.git
-                auth_url = clone_url.replace('https://github.com', f'https://{token}@github.com')
-            else:
-                token = os.getenv('GITCODE_TOKEN') 
-                # GitCode格式: https://oauth2:token@gitcode.net/owner/repo.git
-                auth_url = clone_url.replace('https://gitcode.net', f'https://oauth2:{token}@gitcode.net')
+            # Set up environment with proxy settings
+            env = os.environ.copy()
             
-            result = await asyncio.create_subprocess_exec(
-                'git', 'clone', auth_url, destination,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+            # Add proxy settings if available
+            proxy_url = os.getenv('HTTP_PROXY') or os.getenv('HTTPS_PROXY') or 'http://127.0.0.1:7890'
+            if proxy_url:
+                env['HTTP_PROXY'] = proxy_url
+                env['HTTPS_PROXY'] = proxy_url
+                env['http_proxy'] = proxy_url
+                env['https_proxy'] = proxy_url
+                logger.info(f"Using proxy: {proxy_url}")
+            
+            # The clone_url should already be authenticated from main.py
+            result = await asyncio.wait_for(
+                asyncio.create_subprocess_exec(
+                    'git', 'clone', clone_url, destination,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=env
+                ),
+                timeout=120  # 2 minutes timeout
             )
             
-            stdout, stderr = await result.communicate()
+            stdout, stderr = await asyncio.wait_for(result.communicate(), timeout=120)
             
             if result.returncode != 0:
                 logger.error(f"Git clone failed: {stderr.decode()}")
+                logger.error(f"Git clone stdout: {stdout.decode()}")
                 return False
             
             logger.info("Repository cloned successfully")
             return True
             
+        except asyncio.TimeoutError:
+            logger.error("Git clone operation timed out")
+            return False
         except Exception as e:
             logger.error(f"Clone error: {e}")
             return False
@@ -64,6 +74,18 @@ class GitOps:
         """Create and checkout new branch"""
         try:
             logger.info(f"Creating branch {branch_name} from {base_branch}")
+            
+            # First, try to delete the branch locally if it exists
+            try:
+                await asyncio.create_subprocess_exec(
+                    'git', 'branch', '-D', branch_name,
+                    cwd=repo_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                logger.info(f"Deleted existing local branch {branch_name}")
+            except:
+                pass  # Branch doesn't exist locally, which is fine
             
             # Change to repo directory and create branch
             result = await asyncio.create_subprocess_exec(
@@ -147,27 +169,53 @@ class GitOps:
             logger.error(f"Git commit error: {e}")
             return False
     
-    async def push(self, repo_path: str, branch_name: str) -> bool:
-        """Push branch to remote"""
+    async def push(self, repo_path: str, branch_name: str, force: bool = False) -> bool:
+        """Push branch to remote with proxy support"""
         try:
-            logger.info(f"Pushing branch {branch_name}")
+            logger.info(f"Pushing branch {branch_name}" + (" (force)" if force else ""))
             
-            result = await asyncio.create_subprocess_exec(
-                'git', 'push', '-u', 'origin', branch_name,
-                cwd=repo_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+            # Set up environment with proxy settings
+            env = os.environ.copy()
+            
+            # Add proxy settings if available
+            proxy_url = os.getenv('HTTP_PROXY') or os.getenv('HTTPS_PROXY') or 'http://127.0.0.1:7890'
+            if proxy_url:
+                env['HTTP_PROXY'] = proxy_url
+                env['HTTPS_PROXY'] = proxy_url
+                env['http_proxy'] = proxy_url
+                env['https_proxy'] = proxy_url
+                logger.info(f"Using proxy for push: {proxy_url}")
+            
+            # Prepare git command
+            git_cmd = ['git', 'push', '-u', 'origin', branch_name]
+            if force:
+                git_cmd.insert(2, '--force-with-lease')  # Safer than --force
+            
+            result = await asyncio.wait_for(
+                asyncio.create_subprocess_exec(
+                    *git_cmd,
+                    cwd=repo_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=env
+                ),
+                timeout=60  # 1 minute timeout for push
             )
             
-            stdout, stderr = await result.communicate()
+            stdout, stderr = await asyncio.wait_for(result.communicate(), timeout=60)
             
             if result.returncode != 0:
                 logger.error(f"Git push failed: {stderr.decode()}")
+                logger.error(f"Git push stdout: {stdout.decode()}")
                 return False
             
             logger.info(f"Branch {branch_name} pushed successfully")
+            logger.debug(f"Push output: {stdout.decode()}")
             return True
             
+        except asyncio.TimeoutError:
+            logger.error("Git push operation timed out")
+            return False
         except Exception as e:
             logger.error(f"Git push error: {e}")
             return False

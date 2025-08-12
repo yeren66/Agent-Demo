@@ -70,17 +70,12 @@ class AgentWorker:
             job['pr_number'] = pr_number
             logger.info(f"Created initial PR #{pr_number}")
             
-            # Push initial empty commit to establish the branch
-            await self.gitops.commit(repo_path, "chore(agent): initialize fix branch")
-            await self.gitops.push(repo_path, job['branch'])
-            
-            # Define stages
+            # Define stages (removed deploy stage)
             stages = [
                 ('locate', locate.run_locate_stage),
                 ('propose', propose.run_propose_stage),
                 ('fix', fix.run_fix_stage),
-                ('verify', verify.run_verify_stage),
-                ('deploy', deploy.run_deploy_stage)
+                ('verify', verify.run_verify_stage)
             ]
             
             # Run each stage with progress updates
@@ -124,16 +119,24 @@ class AgentWorker:
                 logger.error("No authentication token available")
                 return False
             
-            # Clone repository
+            # Clone repository with proper authentication format
             if self.api.platform == 'github':
-                clone_url = f"https://oauth2:{token}@github.com/{job['owner']}/{job['repo']}.git"
+                # GitHub使用x-access-token格式或直接token格式
+                clone_url = f"https://x-access-token:{token}@github.com/{job['owner']}/{job['repo']}.git"
             else:
                 clone_url = f"https://oauth2:{token}@gitcode.net/{job['owner']}/{job['repo']}.git"
             
-            await self.gitops.clone_repo(clone_url, repo_path)
+            # Clone repository and check result
+            clone_success = await self.gitops.clone_repo(clone_url, repo_path)
+            if not clone_success:
+                logger.error("Repository clone failed")
+                return False
             
-            # Create and checkout branch
-            await self.gitops.create_branch(repo_path, job['branch'], job['default_branch'])
+            # Create and checkout branch and check result
+            branch_success = await self.gitops.create_branch(repo_path, job['branch'], job['default_branch'])
+            if not branch_success:
+                logger.error("Branch creation failed")
+                return False
             
             logger.info(f"Repository and branch initialized successfully")
             return True
@@ -147,6 +150,31 @@ class AgentWorker:
         try:
             logger.info(f"Creating initial PR for job {job['job_id']}")
             
+            # Create initial agent directory and status file
+            agent_dir = os.path.join(repo_path, 'agent')
+            os.makedirs(agent_dir, exist_ok=True)
+            
+            # Create initial status file
+            status_file = os.path.join(agent_dir, 'status.txt')
+            with open(status_file, 'w', encoding='utf-8') as f:
+                f.write(f"""Agent Job Status
+Job ID: {job['job_id']}
+Issue: #{job['issue_number']}
+Started: {datetime.now().isoformat()}
+
+Status: Initializing...
+""")
+            
+            # Add and commit the initial file
+            await self.gitops.add_file(repo_path, 'agent/status.txt')
+            await self.gitops.commit(repo_path, "chore(agent): initialize fix branch")
+            
+            # Push the branch to make it available on remote (force push to handle conflicts)
+            push_success = await self.gitops.push(repo_path, job['branch'], force=True)
+            if not push_success:
+                logger.error("Failed to push initial branch")
+                return None
+            
             # Create initial progress panel
             pr_title = f"🤖 Agent: fix #{job['issue_number']} - {job.get('issue_title', 'Issue')}"
             pr_body = render_progress_panel(
@@ -155,7 +183,7 @@ class AgentWorker:
                 job_id=job['job_id'],
                 initialized=True,
                 locate=False, propose=False, fix=False, 
-                verify=False, deploy=False, ready=False
+                verify=False, ready=False
             )
             
             # Create draft PR
@@ -202,7 +230,6 @@ class AgentWorker:
                 propose=True, 
                 fix=True,
                 verify=True,
-                deploy=True,
                 ready=True
             )
             
@@ -299,7 +326,6 @@ class AgentWorker:
                 'propose': completed_stage == 'propose' or stages_completed.get('propose', False),
                 'fix': completed_stage == 'fix' or stages_completed.get('fix', False),
                 'verify': completed_stage == 'verify' or stages_completed.get('verify', False),
-                'deploy': completed_stage == 'deploy' or stages_completed.get('deploy', False),
                 'ready': completed_stage == 'ready' or stages_completed.get('ready', False)
             }
             
@@ -336,21 +362,20 @@ class AgentWorker:
             await self._update_pr_progress(job, 'ready', True)
             
             # Final comment on PR
-            summary_comment = f"""🎉 **Agent 修复完成**
+            summary_comment = f"""🎉 **Agent 分析修复完成**
 
 ✅ **完成阶段:**
-- 定位问题文件
-- 生成修复方案  
-- 应用代码修复
-- 验证修改结果
-- 模拟部署演示
+- **定位分析** - 识别问题根源和相关文件
+- **方案设计** - 制定详细的修复策略  
+- **代码修复** - 应用具体的代码变更
+- **验证测试** - 确认修改效果和功能正确性
 
 📋 **产物文件:**
-- `agent/analysis.md` - 问题分析报告
-- `agent/patch_plan.json` - 修复方案计划
-- `agent/report.txt` - 验证与部署报告
+- `agent/analysis.md` - 详细的问题诊断和根因分析
+- `agent/patch_plan.json` - 完整的修复方案和实施计划
+- `agent/report.txt` - 变更验证结果和测试报告
 
-🔍 **请查看代码变更并考虑合并此 PR**
+🔍 **请仔细审查代码变更并考虑合并此 PR**
 """
             
             self.api.comment_pr(job['owner'], job['repo'], job['pr_number'], summary_comment)

@@ -105,16 +105,27 @@ class GitPlatformAPI:
             return self.fallback_token
     
     def _request(self, method: str, endpoint: str, owner: Optional[str] = None, repo: Optional[str] = None, **kwargs) -> Optional[Dict]:
-        """Make API request"""
+        """Make API request with proxy support"""
         try:
             url = f"{self.base_url.rstrip('/')}/{endpoint.lstrip('/')}"
             headers = self._get_auth_headers(owner, repo)
+            
+            # Add proxy settings if available
+            proxies = {}
+            proxy_url = os.getenv('HTTP_PROXY') or os.getenv('HTTPS_PROXY') or 'http://127.0.0.1:7890'
+            if proxy_url:
+                proxies = {
+                    'http': proxy_url,
+                    'https': proxy_url
+                }
+                logger.debug(f"Using proxy for API request: {proxy_url}")
             
             response = requests.request(
                 method=method,
                 url=url,
                 headers=headers,
                 timeout=30,
+                proxies=proxies,
                 **kwargs
             )
             
@@ -122,6 +133,10 @@ class GitPlatformAPI:
             
             if response.status_code == 404:
                 return None
+                
+            if not response.ok:
+                logger.error(f"API request failed: {method} {endpoint} - {response.status_code} {response.reason}")
+                logger.error(f"Response body: {response.text}")
                 
             response.raise_for_status()
             return response.json() if response.content else {}

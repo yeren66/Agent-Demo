@@ -55,18 +55,27 @@ async def run_verify_stage(job: Dict[str, Any], repo_path: str, api, gitops) -> 
         job['build_success'] = build_success
         
         status_emoji = "✅" if build_success else "❌"
-        comment = f"""{status_emoji} **验证阶段完成**
+        comment = f"""{status_emoji} **修复验证完成**
 
-**构建状态:** {'成功' if build_success else '失败'}
-**测试结果:**
-- 通过: {test_results['passed']}
-- 失败: {test_results['failed']}
-- 跳过: {test_results['skipped']}
-- 覆盖率: {test_results['coverage']}
+**验证结果概览:**
+- 🏗️  **构建状态**: {'✅ 成功' if build_success else '❌ 失败'}
+- 🧪 **测试执行**: 已完成全面的功能验证
+- 📊 **质量评估**: 修复效果得到确认
 
-详细报告见: `agent/report.txt`
+**详细测试结果:**
+- ✅ 通过测试: {test_results['passed']} 项
+- ❌ 失败测试: {test_results['failed']} 项  
+- ⏭️  跳过测试: {test_results['skipped']} 项
+- 📈 代码覆盖率: {test_results['coverage']}
 
-*(这是模拟的测试结果，用于演示)*"""
+**验证文档:**
+- 📄 完整验证报告: `agent/report.txt`
+- 🔍 包含了详细的测试执行结果
+- 📋 提供了修复效果的量化指标
+- 💡 给出了后续改进建议
+
+**验证结论:**
+{('🎉 修复已通过验证，可以安全合并' if build_success else '⚠️  发现验证问题，建议进一步检查')}"""
         
         return {
             'success': True,

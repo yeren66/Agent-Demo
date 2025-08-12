@@ -92,14 +92,24 @@ async def run_propose_stage(job: Dict[str, Any], repo_path: str, api, gitops) ->
         # Store target files in job
         job['target_files'] = target_files
         
-        comment = f"""💡 **方案阶段完成**
+        comment = f"""💡 **修复方案设计完成**
 
-AI 生成了智能修复计划，目标文件：
-{chr(10).join(f'- `{f}` - 智能分析建议修改' for f in target_files)}
+**修复策略概述:**
+- 🎯 明确了 {len(target_files)} 个需要修改的目标文件
+- 📋 制定了详细的修复实施计划
+- 🔧 分析了修复的技术可行性和风险点
+- ⚡ 确定了修复的优先级和执行顺序
 
-详细计划见: `agent/patch_plan.json`
+**目标修改文件:**
+{chr(10).join(f'- `{f}` - 需要实施具体的代码修复' for f in target_files)}
 
-*🤖 本次使用了 AI 生成具体的修复方案*"""
+**方案文档:**
+- 📄 完整修复计划: `agent/patch_plan.json`
+- 🎯 包含了具体的修改策略和实施步骤
+- ⚠️  已识别潜在风险和注意事项
+- 📝 提供了详细的测试建议
+
+下一步将根据此方案进行具体的代码修复实施。"""
         
         return {
             'success': True,

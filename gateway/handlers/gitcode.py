@@ -137,6 +137,10 @@ class GitPlatformEventHandler:
                 return None
             
             # Create job
+            # Generate unique branch name with timestamp
+            timestamp = datetime.utcnow().strftime('%m%d-%H%M%S')
+            branch_name = f'agent/fix-{issue_number}-{timestamp}'
+            
             job = {
                 'job_id': str(uuid.uuid4()),
                 'created_at': datetime.utcnow().isoformat(),
@@ -147,7 +151,7 @@ class GitPlatformEventHandler:
                 'issue_title': issue.get('title', ''),
                 'issue_body': issue.get('body', ''),
                 'actor': actor,
-                'branch': f'agent/fix-{issue_number}',
+                'branch': branch_name,
                 'default_branch': repository.get('default_branch', 'main'),
                 'comment_id': payload.get('comment', {}).get('id') if event_type == 'issue_comment' else None,
                 'platform': self.platform
