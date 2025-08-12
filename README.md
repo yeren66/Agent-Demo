@@ -1,22 +1,43 @@
-# Bug Fix Agent - GitHub App
+# Bug Fix Agent - GitHub & GitCode 支持
 
-一个智能的 GitHub App，能够自动修复代码问题。用户在 Issue 中 @agent 即可触发自动分析、生成修复方案并提交 PR。
+一个智能的 Bug 修复助手，支持 GitHub 和 GitCode 平台，可以自动分析 Issue、生成修复代码并创建 Pull Request。用户在 Issue 中 @agent 即可触发自动修复流程。
 
 ## 功能特性
 
-- 🤖 **GitHub App 集成** - 真正的 @agent 提及支持
+- 🌐 **多平台支持** - 同时支持 GitHub 和 GitCode 平台
+- 🤖 **App 集成** - 真正的 @agent 提及支持（GitHub App & GitCode App）
 - 🚀 **自动响应** - 用户在 Issue 中 @your-app-name 即可触发
 - 🧠 **AI 智能分析** - 使用 LLM 智能分析问题并定位相关文件
 - 💡 **智能修复方案** - AI 生成具体的修复策略和方案
 - 🛠️ **自动修复** - 创建修复分支和 PR，应用 AI 生成的修复
 - 📊 **进度追踪** - PR 中实时显示处理进度
+- 🔐 **双重认证** - App 认证（推荐）+ Personal Token（备用）
 - ✅ **AI 驱动** - 真实的 LLM 驱动的 bug 分析和修复
+
+## 🚀 平台支持
+
+### GitHub 平台
+- ✅ GitHub App 认证（支持 @mention）
+- ✅ Personal Access Token 备用认证
+- ✅ Webhook 事件处理
+- ✅ 完整的 API 集成
+
+### GitCode 平台  
+- ✅ GitCode 应用认证（支持 @mention）
+- ✅ Private Token 认证
+- ✅ Personal Access Token 备用认证
+- ✅ Webhook 事件处理
+- ✅ 完整的 API 集成
 
 ## 快速开始
 
-### 1. 创建 GitHub App
+### 1. 选择平台并创建 App
 
+**GitHub 平台:**
 参考 `GITHUB_APP_SETUP.md` 创建你的 GitHub App 并获取必要的认证信息。
+
+**GitCode 平台:**
+参考 `GITCODE_APP_SETUP.md` 创建你的 GitCode 应用并获取必要的认证信息。
 
 ### 2. 配置环境变量
 
@@ -26,11 +47,14 @@
 cp .env.example .env
 ```
 
-编辑 `.env` 文件：
+根据你选择的平台编辑 `.env` 文件：
 
+**GitHub 平台配置:**
 ```bash
-# GitHub 配置
+# 平台选择
 PLATFORM=github
+
+# GitHub 配置
 GITHUB_TOKEN=your_github_personal_access_token
 WEBHOOK_SECRET=your_webhook_secret
 
@@ -40,11 +64,31 @@ GITHUB_APP_PRIVATE_KEY_PATH=./your-app-private-key.pem
 GITHUB_APP_CLIENT_ID=your_client_id
 GITHUB_APP_CLIENT_SECRET=your_client_secret
 GITHUB_APP_NAME=your-app-name
+```
 
+**GitCode 平台配置:**
+```bash
+# 平台选择
+PLATFORM=gitcode
+
+# GitCode 配置
+GITCODE_TOKEN=your_gitcode_personal_access_token
+GITCODE_BASE=https://api.gitcode.com/api/v5
+WEBHOOK_SECRET=your_webhook_secret
+
+# GitCode App 配置（推荐，用于 @mention）
+GITCODE_APP_ID=your_gitcode_app_id
+GITCODE_APP_SECRET=your_gitcode_app_secret
+GITCODE_PRIVATE_TOKEN=your_gitcode_private_token
+GITCODE_APP_NAME=your-gitcode-app-name
+```
+
+**通用配置:**
+```bash
 # LLM 配置（AI 功能）
 LLM_BASE_URL=https://api.geekai.pro/v1/chat/completions
 LLM_API_KEY=your_llm_api_key
-LLM_MODEL=gpt-3.5-turbo
+LLM_MODEL=gpt-4o-mini
 
 # 可选：限制用户和仓库
 ALLOWED_USERS=user1,user2
@@ -57,7 +101,21 @@ ALLOWED_REPOS=owner/repo1,owner/repo2
 pip install -r requirements.txt
 ```
 
-### 4. 启动服务
+### 4. 测试配置
+
+根据你选择的平台运行对应的测试脚本：
+
+**GitHub 平台:**
+```bash
+python test_github_app.py
+```
+
+**GitCode 平台:**
+```bash
+python test_gitcode_config.py
+```
+
+### 5. 启动服务
 
 ```bash
 # 开发模式
@@ -67,7 +125,7 @@ python start_local.py
 docker-compose -f docker/docker-compose.yml up -d
 ```
 
-### 5. 暴露本地服务（开发环境）
+### 6. 暴露本地服务（开发环境）
 
 ```bash
 # 使用 ngrok
@@ -77,16 +135,29 @@ docker-compose -f docker/docker-compose.yml up -d
 ngrok http 8080
 ```
 
-### 6. 配置 GitHub App Webhook
+### 7. 配置 Webhook
 
+**GitHub 平台:**
 在 GitHub App 设置中配置 Webhook URL：
 - **URL**: `https://your-ngrok-url.ngrok-free.app/api/webhook`  
 - **Events**: Issues, Issue comments
 - **Secret**: 填入你的 `WEBHOOK_SECRET`
 
-### 7. 安装并测试
+**GitCode 平台:**
+在 GitCode 仓库设置中配置 Webhook：
+- **URL**: `https://your-ngrok-url.ngrok-free.app/api/webhook`
+- **事件**: Issues, Issue comments  
+- **Secret Token**: 填入你的 `WEBHOOK_SECRET`
 
+### 8. 安装并测试
+
+**GitHub:**
 1. 将 GitHub App 安装到你的仓库
+2. 在任意 Issue 中评论：`@your-app-name fix this bug`
+3. Agent 将自动响应并开始处理
+
+**GitCode:**
+1. 确保应用有仓库访问权限
 2. 在任意 Issue 中评论：`@your-app-name fix this bug`
 3. Agent 将自动响应并开始处理
 

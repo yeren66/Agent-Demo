@@ -14,11 +14,15 @@ class GitPlatformEventHandler:
     
     def __init__(self):
         self.platform = os.getenv('PLATFORM', 'github').lower()
-        # GitHub App 的 @mention 模式
-        # 用户需要配置 GITHUB_APP_NAME 环境变量
-        app_name = os.getenv('GITHUB_APP_NAME', 'agent')
+        
+        # 根据平台设置 App 名称和触发模式
+        if self.platform == 'github':
+            app_name = os.getenv('GITHUB_APP_NAME', 'agent')
+        else:  # gitcode
+            app_name = os.getenv('GITCODE_APP_NAME', 'agent')
+            
         self.trigger_patterns = [
-            # GitHub App @mention 模式
+            # App @mention 模式
             rf'@{re.escape(app_name)}\s+fix',
             rf'@{re.escape(app_name)}\s+help',
             rf'@{re.escape(app_name)}\b',  # 简单的 @app-name 提及
@@ -28,6 +32,8 @@ class GitPlatformEventHandler:
             r'@agent fix',
             r'/agent fix'
         ]
+        
+        logger.info(f"Initialized {self.platform} event handler with app name: {app_name}")
     
     def should_process_event(self, event_type: str, payload: Dict[str, Any]) -> bool:
         """
@@ -59,7 +65,11 @@ class GitPlatformEventHandler:
                 
                 # 过滤掉 Agent 自己的评论，避免递归触发
                 comment_author = payload.get('comment', {}).get('user', {}).get('login', '')
-                app_name = os.getenv('GITHUB_APP_NAME', 'agent')
+                if self.platform == 'github':
+                    app_name = os.getenv('GITHUB_APP_NAME', 'agent')
+                else:  # gitcode
+                    app_name = os.getenv('GITCODE_APP_NAME', 'agent')
+                    
                 if comment_author == app_name or comment_author.endswith('[bot]'):
                     logger.info(f"Skipping comment from bot user: {comment_author}")
                     return False
@@ -174,15 +184,19 @@ class GitPlatformEventHandler:
         Send immediate response to the issue
         """
         try:
-            # Import GitHub API client
+            # Import appropriate API client based on platform
             import sys
             import os
             sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-            from github_api import GitHubAPI
             
-            api = GitHubAPI()
-            
-            app_name = os.getenv('GITHUB_APP_NAME', 'agent')
+            if self.platform == 'github':
+                from github_api import GitHubAPI
+                api = GitHubAPI()
+                app_name = os.getenv('GITHUB_APP_NAME', 'agent')
+            else:  # gitcode
+                from gitcode_api import GitCodeAPI
+                api = GitCodeAPI()
+                app_name = os.getenv('GITCODE_APP_NAME', 'agent')
             
             response_message = f"""✅ **Bug Fix Agent 已接单**
 

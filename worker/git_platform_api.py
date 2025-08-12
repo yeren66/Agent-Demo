@@ -16,7 +16,7 @@ class GitPlatformAPI:
         if self.platform == 'github':
             self.base_url = os.getenv('GITHUB_BASE', 'https://api.github.com')
         else:  # gitcode
-            self.base_url = os.getenv('GITCODE_BASE', 'https://gitcode.net/api/v5')
+            self.base_url = os.getenv('GITCODE_BASE', 'https://api.gitcode.com/api/v5')
         
         # GitHub App认证支持
         self._github_app_auth = None
@@ -31,11 +31,31 @@ class GitPlatformAPI:
             except ImportError:
                 logger.warning("GitHub App authentication module not available")
         
+        # GitCode App认证支持
+        self._gitcode_app_auth = None
+        if self.platform == 'gitcode':
+            try:
+                from .gitcode_app_auth import GitCodeAppAuth
+                self._gitcode_app_auth = GitCodeAppAuth()
+                if self._gitcode_app_auth.is_app_available():
+                    logger.info("GitCode App authentication initialized")
+                else:
+                    logger.info("GitCode App not configured, using Personal Access Token")
+            except ImportError:
+                logger.warning("GitCode App authentication module not available")
+        
         self.fallback_token = self._get_fallback_token()
-        if not self.fallback_token and not (self.platform == 'github' and self._github_app_auth and self._github_app_auth.is_app_available()):
-            logger.warning(f"{self.platform.upper()}_TOKEN not found - some operations may fail without GitHub App")
+        if not self.fallback_token and not self._has_app_auth():
+            logger.warning(f"{self.platform.upper()}_TOKEN not found - some operations may fail without App authentication")
         
         logger.info(f"Initialized {self.platform} API client")
+    
+    def _has_app_auth(self) -> bool:
+        """检查是否有可用的App认证"""
+        if self.platform == 'github':
+            return bool(self._github_app_auth and self._github_app_auth.is_app_available())
+        else:  # gitcode
+            return bool(self._gitcode_app_auth and self._gitcode_app_auth.is_app_available())
     
     def _get_fallback_token(self) -> Optional[str]:
         """获取回退令牌（Personal Access Token）"""
@@ -75,10 +95,20 @@ class GitPlatformAPI:
                 headers['Authorization'] = f'token {self.fallback_token}'
             else:
                 raise ValueError("No GitHub authentication method available")
-        else:
-            # GitCode使用传统token
+        else:  # gitcode
+            # 优先使用GitCode App认证
+            if self._gitcode_app_auth and self._gitcode_app_auth.is_app_available():
+                try:
+                    app_headers = self._gitcode_app_auth.get_auth_headers(owner, repo)
+                    headers.update(app_headers)
+                    return headers
+                except Exception as e:
+                    logger.error(f"GitCode App authentication failed: {e}")
+            
+            # 回退到个人访问令牌
             if self.fallback_token:
-                headers['Authorization'] = f'token {self.fallback_token}'
+                # GitCode 支持多种认证方式，使用 Authorization Bearer
+                headers['Authorization'] = f'Bearer {self.fallback_token}'
             else:
                 raise ValueError("GITCODE_TOKEN is required")
         
@@ -100,8 +130,17 @@ class GitPlatformAPI:
             
             # 回退到个人访问令牌
             return self.fallback_token
-        else:
-            # GitCode使用传统token
+        else:  # gitcode
+            # 优先使用GitCode App认证
+            if self._gitcode_app_auth and self._gitcode_app_auth.is_app_available():
+                try:
+                    token = self._gitcode_app_auth.get_access_token(owner or '', repo or '')
+                    if token:
+                        return token
+                except Exception as e:
+                    logger.error(f"Failed to get GitCode App token: {e}")
+            
+            # 回退到个人访问令牌
             return self.fallback_token
     
     def _request(self, method: str, endpoint: str, owner: Optional[str] = None, repo: Optional[str] = None, **kwargs) -> Optional[Dict]:
