@@ -92,24 +92,38 @@ async def run_propose_stage(job: Dict[str, Any], repo_path: str, api, gitops) ->
         # Store target files in job
         job['target_files'] = target_files
         
-        comment = f"""💡 **修复方案设计完成**
+        comment = f"""💡 **第2阶段：修复方案设计完成**
 
-**修复策略概述:**
-- 🎯 明确了 {len(target_files)} 个需要修改的目标文件
-- 📋 制定了详细的修复实施计划
-- 🔧 分析了修复的技术可行性和风险点
-- ⚡ 确定了修复的优先级和执行顺序
+**🎯 方案概要:**
+- 目标修改文件: **{len(target_files)}个**
+- 修复策略: {'AI智能生成' if not fix_plan.get('demo_mode', True) else '启发式方案'}
+- 风险评估: {'� 低风险' if len(target_files) <= 3 else '🟡 中等风险'}
 
-**目标修改文件:**
-{chr(10).join(f'- `{f}` - 需要实施具体的代码修复' for f in target_files)}
+**📁 计划修改的文件:**
+{chr(10).join(f'- `{f}` - 待修复' for f in target_files)}
 
-**方案文档:**
-- 📄 完整修复计划: `agent/patch_plan.json`
-- 🎯 包含了具体的修改策略和实施步骤
-- ⚠️  已识别潜在风险和注意事项
-- 📝 提供了详细的测试建议
+**🔧 修复策略:**
+- � 基于问题分析制定针对性修复方案
+- 🛡️ 确保修改向后兼容，避免破坏性变更
+- 🧪 考虑修复的验证和测试策略
+- 📝 详细记录修复的实施计划
 
-下一步将根据此方案进行具体的代码修复实施。"""
+**📋 生成文件:** `agent/patch_plan.json`
+**🔗 工作分支:** `{job['branch']}`
+
+---
+*接下来将开始应用修复方案...*"""
+        
+        return {
+            'success': True,
+            'target_files': target_files,
+            'comment': comment,
+            'stage_data': {
+                'fix_strategy': fix_plan.get('strategy', 'demo_safe_patch'),
+                'changes_count': len(fix_plan.get('changes', [])),
+                'risk_level': 'low' if len(target_files) <= 3 else 'medium'
+            }
+        }
         
         return {
             'success': True,

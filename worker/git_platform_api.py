@@ -46,7 +46,8 @@ class GitPlatformAPI:
         
         self.fallback_token = self._get_fallback_token()
         if not self.fallback_token and not self._has_app_auth():
-            logger.warning(f"{self.platform.upper()}_TOKEN not found - some operations may fail without App authentication")
+            token_var = "GITHUB_TOKEN" if self.platform == 'github' else "GITCODE_TOKEN/GITCODE_PAT"
+            logger.warning(f"{token_var} not found - some operations may fail without App authentication")
         
         logger.info(f"Initialized {self.platform} API client")
     
@@ -62,7 +63,8 @@ class GitPlatformAPI:
         if self.platform == 'github':
             return os.getenv('GITHUB_TOKEN')
         else:  # gitcode
-            return os.getenv('GITCODE_TOKEN')
+            # 支持两种环境变量名：GITCODE_TOKEN 和 GITCODE_PAT
+            return os.getenv('GITCODE_TOKEN') or os.getenv('GITCODE_PAT')
     
     def _get_auth_headers(self, owner: Optional[str] = None, repo: Optional[str] = None) -> Dict[str, str]:
         """获取认证头部"""
@@ -116,6 +118,8 @@ class GitPlatformAPI:
     
     def get_token(self, owner: Optional[str] = None, repo: Optional[str] = None) -> Optional[str]:
         """获取当前可用的访问令牌"""
+        logger.info(f"获取令牌 - 平台: {self.platform}, 回退令牌: {'已设置' if self.fallback_token else '未设置'}")
+        
         if self.platform == 'github':
             # 优先使用GitHub App认证
             if self._github_app_auth and self._github_app_auth.is_app_available() and owner and repo:
@@ -141,43 +145,52 @@ class GitPlatformAPI:
                     logger.error(f"Failed to get GitCode App token: {e}")
             
             # 回退到个人访问令牌
+            logger.info(f"返回回退令牌: {'已设置' if self.fallback_token else '未设置'}")
             return self.fallback_token
     
     def _request(self, method: str, endpoint: str, owner: Optional[str] = None, repo: Optional[str] = None, **kwargs) -> Optional[Dict]:
-        """Make API request with proxy support"""
+        """Make API request"""
         try:
             url = f"{self.base_url.rstrip('/')}/{endpoint.lstrip('/')}"
             headers = self._get_auth_headers(owner, repo)
             
-            # Add proxy settings if available
-            proxies = {}
-            proxy_url = os.getenv('HTTP_PROXY') or os.getenv('HTTPS_PROXY') or 'http://127.0.0.1:7890'
-            if proxy_url:
-                proxies = {
-                    'http': proxy_url,
-                    'https': proxy_url
-                }
-                logger.debug(f"Using proxy for API request: {proxy_url}")
+            logger.info(f"API请求: {method} {url}")
+            logger.debug(f"请求头: {headers}")
+            if 'json' in kwargs:
+                logger.debug(f"请求体: {kwargs['json']}")
             
             response = requests.request(
                 method=method,
                 url=url,
                 headers=headers,
                 timeout=30,
-                proxies=proxies,
                 **kwargs
             )
             
-            logger.debug(f"{method} {url} - Status: {response.status_code}")
+            logger.info(f"API响应: {method} {endpoint} - Status: {response.status_code}")
             
             if response.status_code == 404:
+                logger.warning(f"资源未找到: {endpoint}")
                 return None
                 
             if not response.ok:
                 logger.error(f"API request failed: {method} {endpoint} - {response.status_code} {response.reason}")
                 logger.error(f"Response body: {response.text}")
                 
-            response.raise_for_status()
+                # 对于GitCode，可能需要特殊处理某些错误
+                if self.platform == 'gitcode' and response.status_code == 400:
+                    try:
+                        error_data = response.json()
+                        if error_data.get('error_code') == 404:
+                            logger.error(f"GitCode Issue不存在或无权限访问: {owner}/{repo} #{endpoint.split('/')[-2]}")
+                        elif 'Issue Not Found' in error_data.get('error_message', ''):
+                            logger.error(f"GitCode Issue未找到，可能使用了错误的编号")
+                    except:
+                        pass
+                
+                # 不要抛出异常，让调用者决定如何处理
+                return None
+                
             return response.json() if response.content else {}
             
         except requests.exceptions.RequestException as e:
@@ -191,9 +204,19 @@ class GitPlatformAPI:
     
     def comment_issue(self, owner: str, repo: str, number: int, body: str) -> bool:
         """Add comment to issue"""
+        logger.info(f"正在向Issue #{number} ({owner}/{repo})发送评论")
+        logger.debug(f"评论内容长度: {len(body)} 字符")
+        
         result = self._request('POST', f'/repos/{owner}/{repo}/issues/{number}/comments', 
                              owner, repo, json={'body': body})
-        return result is not None
+        
+        success = result is not None
+        if success:
+            logger.info(f"✅ 成功向Issue #{number}发送评论")
+        else:
+            logger.error(f"❌ 向Issue #{number}发送评论失败")
+            
+        return success
     
     def comment_issue_sync(self, owner: str, repo: str, number: int, body: str) -> bool:
         """Add comment to issue (sync version)"""

@@ -20,6 +20,9 @@ def verify_webhook_signature(headers: Dict[str, str], body: bytes, secret: str) 
     try:
         platform = os.getenv('PLATFORM', 'github').lower()
         
+        # 调试：打印所有头部信息
+        logger.debug(f"Webhook headers: {dict(headers)}")
+        
         if platform == 'github':
             # GitHub uses X-Hub-Signature-256 header
             received_signature = headers.get('x-hub-signature-256', '')
@@ -43,12 +46,39 @@ def verify_webhook_signature(headers: Dict[str, str], body: bytes, secret: str) 
             ).hexdigest()
             
         else:  # gitcode
-            # GitCode uses X-Gitcode-Token header
-            received_signature = headers.get('x-gitcode-token', '')
+            # GitCode 可能使用不同的头部名称，尝试多种可能性
+            possible_headers = [
+                'x-gitcode-token',
+                'x-gitcode-signature', 
+                'x-gitcode-sign',
+                'x-signature',
+                'x-gitcode-webhook-signature'
+            ]
+            
+            received_signature = None
+            header_used = None
+            
+            for header in possible_headers:
+                if header in headers:
+                    received_signature = headers[header]
+                    header_used = header
+                    break
             
             if not received_signature:
                 logger.warning("No GitCode webhook signature found in headers")
+                logger.warning(f"Available headers: {list(headers.keys())}")
+                # 在测试模式下允许无签名请求
+                test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
+                if test_mode:
+                    logger.info("TEST_MODE enabled, skipping signature verification")
+                    return True
                 return False
+            
+            logger.debug(f"Using GitCode signature from header: {header_used}")
+            
+            # GitCode 可能使用不同的签名格式，尝试直接比较
+            if received_signature.startswith('sha256='):
+                received_signature = received_signature[7:]
             
             # Create expected signature
             expected_signature = hmac.new(
@@ -58,7 +88,11 @@ def verify_webhook_signature(headers: Dict[str, str], body: bytes, secret: str) 
             ).hexdigest()
         
         # Compare signatures securely
-        return hmac.compare_digest(received_signature, expected_signature)
+        result = hmac.compare_digest(received_signature, expected_signature)
+        if not result:
+            logger.warning(f"Signature mismatch. Expected: {expected_signature[:8]}..., Received: {received_signature[:8]}...")
+        
+        return result
         
     except Exception as e:
         logger.error(f"Signature verification error: {e}")

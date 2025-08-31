@@ -1,43 +1,43 @@
-# Bug Fix Agent - GitHub & GitCode 支持
+# GitCode Bug Fix Agent
 
-一个智能的 Bug 修复助手，支持 GitHub 和 GitCode 平台，可以自动分析 Issue、生成修复代码并创建 Pull Request。用户在 Issue 中 @agent 即可触发自动修复流程。
+一个智能的 Bug 修复助手，专为 GitCode 平台设计，可以自动分析 Issue、生成修复代码并创建 Pull Request。通过 Issue 分配触发自动修复流程。
+
+## 接口文档
+
+详见《接口规范（API 说明）》：参阅项目根目录的 API.md。
 
 ## 功能特性
 
-- 🌐 **多平台支持** - 同时支持 GitHub 和 GitCode 平台
-- 🤖 **App 集成** - 真正的 @agent 提及支持（GitHub App & GitCode App）
-- 🚀 **自动响应** - 用户在 Issue 中 @your-app-name 即可触发
-- 🧠 **AI 智能分析** - 使用 LLM 智能分析问题并定位相关文件
+- 🤖 **GitCode 集成** - 完整的 GitCode 平台支持
+- 🚀 **分配触发** - 将 Issue 分配给机器人账号即可触发修复
+- 🧠 **AI 智能分析** - 使用 LLM 智能分析问题并定位相关文件  
 - 💡 **智能修复方案** - AI 生成具体的修复策略和方案
 - 🛠️ **自动修复** - 创建修复分支和 PR，应用 AI 生成的修复
 - 📊 **进度追踪** - PR 中实时显示处理进度
-- 🔐 **双重认证** - App 认证（推荐）+ Personal Token（备用）
+- 🔐 **PAT 认证** - 使用机器人个人访问令牌认证
 - ✅ **AI 驱动** - 真实的 LLM 驱动的 bug 分析和修复
 
-## 🚀 平台支持
+## 🚀 GitCode 平台支持
 
-### GitHub 平台
-- ✅ GitHub App 认证（支持 @mention）
-- ✅ Personal Access Token 备用认证
+- ✅ 机器人 PAT (Personal Access Token) 认证
+- ✅ Issue 分配触发机制
 - ✅ Webhook 事件处理
-- ✅ 完整的 API 集成
-
-### GitCode 平台  
-- ✅ GitCode 应用认证（支持 @mention）
-- ✅ Private Token 认证
-- ✅ Personal Access Token 备用认证
-- ✅ Webhook 事件处理
-- ✅ 完整的 API 集成
+- ✅ 完整的 GitCode API 集成
+- ✅ Issue 反馈和 PR 创建
+- ✅ AI 工作流程集成
 
 ## 快速开始
 
 ### 1. 选择平台并创建 App
 
 **GitHub 平台:**
-参考 `GITHUB_APP_SETUP.md` 创建你的 GitHub App 并获取必要的认证信息。
+## 快速开始
 
-**GitCode 平台:**
-参考 `GITCODE_APP_SETUP.md` 创建你的 GitCode 应用并获取必要的认证信息。
+### 1. 准备 GitCode 机器人账号
+
+1. 创建一个专用的 GitCode 机器人账号（如 `agentbot`）
+2. 获取该账号的个人访问令牌 (Personal Access Token)
+3. 确保机器人账号有目标仓库的访问权限
 
 ### 2. 配置环境变量
 
@@ -47,44 +47,24 @@
 cp .env.example .env
 ```
 
-根据你选择的平台编辑 `.env` 文件：
+编辑 `.env` 文件：
 
-**GitHub 平台配置:**
 ```bash
-# 平台选择
-PLATFORM=github
-
-# GitHub 配置
-GITHUB_TOKEN=your_github_personal_access_token
-WEBHOOK_SECRET=your_webhook_secret
-
-# GitHub App 配置（推荐，用于 @mention）
-GITHUB_APP_ID=your_app_id
-GITHUB_APP_PRIVATE_KEY_PATH=./your-app-private-key.pem
-GITHUB_APP_CLIENT_ID=your_client_id
-GITHUB_APP_CLIENT_SECRET=your_client_secret
-GITHUB_APP_NAME=your-app-name
-```
-
-**GitCode 平台配置:**
-```bash
-# 平台选择
+# 平台配置
 PLATFORM=gitcode
 
-# GitCode 配置
-GITCODE_TOKEN=your_gitcode_personal_access_token
-GITCODE_BASE=https://api.gitcode.com/api/v5
+# GitCode 机器人 PAT 认证配置 (推荐方式)
+GITCODE_PAT=your_gitcode_personal_access_token
+GITCODE_BOT_USERNAME=your_bot_username
+
+# Webhook 配置
 WEBHOOK_SECRET=your_webhook_secret
 
-# GitCode App 配置（推荐，用于 @mention）
-GITCODE_APP_ID=your_gitcode_app_id
-GITCODE_APP_SECRET=your_gitcode_app_secret
-GITCODE_PRIVATE_TOKEN=your_gitcode_private_token
-GITCODE_APP_NAME=your-gitcode-app-name
+# LLM Configuration (AI Features)
+LLM_BASE_URL=https://api.geekai.pro/v1/chat/completions
+LLM_API_KEY=your_llm_api_key
+LLM_MODEL=gpt-4o-mini
 ```
-
-**通用配置:**
-```bash
 # LLM 配置（AI 功能）
 LLM_BASE_URL=https://api.geekai.pro/v1/chat/completions
 LLM_API_KEY=your_llm_api_key

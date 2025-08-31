@@ -9,20 +9,17 @@ from security import is_authorized_user, is_authorized_repo
 
 logger = logging.getLogger(__name__)
 
-class GitPlatformEventHandler:
-    """Handle Git Platform webhook events (GitHub/GitCode)"""
+class GitCodeEventHandler:
+    """处理 GitCode webhook 事件"""
     
     def __init__(self):
-        self.platform = os.getenv('PLATFORM', 'github').lower()
+        self.platform = 'gitcode'
         
-        # 根据平台设置 App 名称和触发模式
-        if self.platform == 'github':
-            app_name = os.getenv('GITHUB_APP_NAME', 'agent')
-        else:  # gitcode
-            app_name = os.getenv('GITCODE_APP_NAME', 'agent')
-            
+        # GitCode 应用配置
+        app_name = os.getenv('GITCODE_APP_NAME', 'bug-fix-agent')
+        
         self.trigger_patterns = [
-            # App @mention 模式
+            # GitCode App @mention 模式
             rf'@{re.escape(app_name)}\s+fix',
             rf'@{re.escape(app_name)}\s+help',
             rf'@{re.escape(app_name)}\b',  # 简单的 @app-name 提及
@@ -33,79 +30,95 @@ class GitPlatformEventHandler:
             r'/agent fix'
         ]
         
-        logger.info(f"Initialized {self.platform} event handler with app name: {app_name}")
+        logger.info(f"GitCode 事件处理器已初始化，应用名称: {app_name}")
     
     def should_process_event(self, event_type: str, payload: Dict[str, Any]) -> bool:
         """
-        Determine if this event should trigger the agent
+        判断是否应该处理这个事件
         """
         try:
             # 支持的事件类型
-            valid_events = ['issues', 'issue_comment']
+            valid_events = ['issues', 'issue_comment', 'Issue Hook', 'Note Hook']
             
             if event_type not in valid_events:
+                logger.debug(f"不支持的事件类型: {event_type}")
                 return False
             
-            # Get the comment content
+            # 获取评论内容
             comment_body = self._get_comment_body(event_type, payload)
             if not comment_body:
+                logger.debug("未找到评论内容")
                 return False
             
-            # 对于 GitHub issues 事件，只处理新建的 issue（不是编辑）
-            if event_type == 'issues':
+            # 对于 issues 事件，只处理新建的 issue
+            if event_type in ['issues', 'Issue Hook']:
                 action = payload.get('action', '')
-                if action != 'opened':
+                if action not in ['open', 'opened']:
+                    logger.debug(f"忽略 issue 操作: {action}")
                     return False
             
             # 对于 issue_comment 事件，只处理新建的评论
-            elif event_type == 'issue_comment':
+            elif event_type in ['issue_comment', 'Note Hook']:
                 action = payload.get('action', '')
-                if action != 'created':
+                if action not in ['create', 'created']:
+                    logger.debug(f"忽略评论操作: {action}")
                     return False
                 
                 # 过滤掉 Agent 自己的评论，避免递归触发
-                comment_author = payload.get('comment', {}).get('user', {}).get('login', '')
-                if self.platform == 'github':
-                    app_name = os.getenv('GITHUB_APP_NAME', 'agent')
-                else:  # gitcode
-                    app_name = os.getenv('GITCODE_APP_NAME', 'agent')
+                comment_author = self._get_comment_author(payload)
+                app_name = os.getenv('GITCODE_APP_NAME', 'bug-fix-agent')
                     
                 if comment_author == app_name or comment_author.endswith('[bot]'):
-                    logger.info(f"Skipping comment from bot user: {comment_author}")
+                    logger.info(f"跳过机器人用户的评论: {comment_author}")
                     return False
                 
-                # 过滤掉包含 Agent 状态报告的评论（避免处理自己的回复）
+                # 过滤掉包含 Agent 状态报告的评论
                 if ('Bug Fix Agent 已接单' in comment_body or 
                     '任务ID:' in comment_body or
                     '分支: `agent/' in comment_body or
                     '🤖 Agent 正在分析问题' in comment_body):
-                    logger.info("Skipping Agent status comment to avoid recursion")
+                    logger.info("跳过 Agent 状态评论以避免递归")
                     return False
             
-            # Check for trigger patterns
-            logger.info(f"Checking comment body: {comment_body[:100]}...")
+            # 检查触发模式
+            logger.debug(f"检查评论内容: {comment_body[:100]}...")
             for pattern in self.trigger_patterns:
                 if re.search(pattern, comment_body, re.IGNORECASE):
-                    logger.info(f"Trigger pattern matched: {pattern}")
+                    logger.info(f"触发模式匹配: {pattern}")
                     return True
             
-            logger.info("No trigger pattern matched")
+            logger.debug("没有匹配的触发模式")
             return False
             
         except Exception as e:
-            logger.error(f"Error checking event trigger: {e}")
+            logger.error(f"检查事件触发时发生错误: {e}")
             return False
     
     def _get_comment_body(self, event_type: str, payload: Dict[str, Any]) -> str:
-        """Extract comment body from payload"""
+        """从 payload 中提取评论内容"""
         try:
-            if event_type == 'issues':
-                # New issue created
-                return payload.get('issue', {}).get('body', '')
-            elif event_type == 'issue_comment':
-                # Comment on issue
-                return payload.get('comment', {}).get('body', '')
+            if event_type in ['issues', 'Issue Hook']:
+                # 新创建的 issue
+                return payload.get('issue', {}).get('body', '') or payload.get('object_attributes', {}).get('description', '')
+            elif event_type in ['issue_comment', 'Note Hook']:
+                # Issue 评论
+                return (payload.get('comment', {}).get('body', '') or 
+                       payload.get('object_attributes', {}).get('note', ''))
             return ''
+        except Exception as e:
+            logger.error(f"提取评论内容时发生错误: {e}")
+            return ''
+    
+    def _get_comment_author(self, payload: Dict[str, Any]) -> str:
+        """获取评论作者"""
+        try:
+            # 尝试不同的字段
+            author = (payload.get('comment', {}).get('user', {}).get('login', '') or
+                     payload.get('comment', {}).get('user', {}).get('username', '') or
+                     payload.get('user', {}).get('login', '') or
+                     payload.get('user', {}).get('username', '') or
+                     payload.get('object_attributes', {}).get('author', {}).get('username', ''))
+            return author
         except Exception:
             return ''
     

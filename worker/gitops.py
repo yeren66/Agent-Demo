@@ -26,21 +26,17 @@ class GitOps:
             logger.warning(f"Git config setup failed: {e}")
     
     async def clone_repo(self, clone_url: str, destination: str) -> bool:
-        """Clone repository using authenticated URL with proxy support"""
+        """Clone repository using authenticated URL"""
         try:
             logger.info(f"Cloning repository to {destination}")
             
-            # Set up environment with proxy settings
+            # Set up clean environment
             env = os.environ.copy()
             
-            # Add proxy settings if available
-            proxy_url = os.getenv('HTTP_PROXY') or os.getenv('HTTPS_PROXY') or 'http://127.0.0.1:7890'
-            if proxy_url:
-                env['HTTP_PROXY'] = proxy_url
-                env['HTTPS_PROXY'] = proxy_url
-                env['http_proxy'] = proxy_url
-                env['https_proxy'] = proxy_url
-                logger.info(f"Using proxy: {proxy_url}")
+            # Remove any proxy settings that might interfere with git authentication
+            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']
+            for var in proxy_vars:
+                env.pop(var, None)
             
             # The clone_url should already be authenticated from main.py
             result = await asyncio.wait_for(
@@ -87,9 +83,28 @@ class GitOps:
             except:
                 pass  # Branch doesn't exist locally, which is fine
             
-            # Change to repo directory and create branch
+            # First checkout the base branch
+            checkout_result = await asyncio.create_subprocess_exec(
+                'git', 'checkout', base_branch,
+                cwd=repo_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await checkout_result.communicate()
+            
+            if checkout_result.returncode != 0:
+                # Try with origin/ prefix
+                checkout_result = await asyncio.create_subprocess_exec(
+                    'git', 'checkout', f'origin/{base_branch}',
+                    cwd=repo_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await checkout_result.communicate()
+            
+            # Create and checkout new branch from current position
             result = await asyncio.create_subprocess_exec(
-                'git', 'checkout', '-b', branch_name, f'origin/{base_branch}',
+                'git', 'checkout', '-b', branch_name,
                 cwd=repo_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
@@ -170,21 +185,57 @@ class GitOps:
             return False
     
     async def push(self, repo_path: str, branch_name: str, force: bool = False) -> bool:
-        """Push branch to remote with proxy support"""
+        """Push branch to remote"""
         try:
             logger.info(f"Pushing branch {branch_name}" + (" (force)" if force else ""))
             
-            # Set up environment with proxy settings
+            # Set up clean environment
             env = os.environ.copy()
             
-            # Add proxy settings if available
-            proxy_url = os.getenv('HTTP_PROXY') or os.getenv('HTTPS_PROXY') or 'http://127.0.0.1:7890'
-            if proxy_url:
-                env['HTTP_PROXY'] = proxy_url
-                env['HTTPS_PROXY'] = proxy_url
-                env['http_proxy'] = proxy_url
-                env['https_proxy'] = proxy_url
-                logger.info(f"Using proxy for push: {proxy_url}")
+            # Remove any proxy settings that might interfere with git authentication
+            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']
+            for var in proxy_vars:
+                env.pop(var, None)
+
+            # Get the current origin URL to ensure it's authenticated
+            get_origin_result = await asyncio.create_subprocess_exec(
+                'git', 'remote', 'get-url', 'origin',
+                cwd=repo_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env
+            )
+            origin_stdout, origin_stderr = await get_origin_result.communicate()
+            
+            if get_origin_result.returncode == 0:
+                origin_url = origin_stdout.decode().strip()
+                logger.info(f"Current origin URL: {origin_url}")
+                
+                # If the URL doesn't contain authentication, we need to add it
+                if '@gitcode.com' not in origin_url or origin_url.startswith('https://gitcode.com'):
+                    # Get token from environment
+                    from git_platform_api import GitPlatformAPI
+                    api = GitPlatformAPI()  # Will detect platform from environment
+                    token = api.get_token()
+                    
+                    if token and 'gitcode.com' in origin_url:
+                        # Convert to authenticated URL format using oauth2:TOKEN format
+                        if origin_url.startswith('https://gitcode.com/'):
+                            authenticated_url = origin_url.replace('https://gitcode.com/', f'https://oauth2:{token}@gitcode.com/')
+                            logger.info(f"Updating origin to use authenticated URL with oauth2 format")
+                            
+                            # Update the remote origin URL
+                            update_result = await asyncio.create_subprocess_exec(
+                                'git', 'remote', 'set-url', 'origin', authenticated_url,
+                                cwd=repo_path,
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE,
+                                env=env
+                            )
+                            await update_result.communicate()
+                            
+                            if update_result.returncode != 0:
+                                logger.warning("Failed to update remote URL for authentication")
             
             # Prepare git command
             git_cmd = ['git', 'push', '-u', 'origin', branch_name]

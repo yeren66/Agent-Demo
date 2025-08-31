@@ -8,7 +8,7 @@ import logging
 from typing import Optional
 import re
 
-from handlers.gitcode import GitCodeEventHandler
+from handlers.gitcode_handler import GitCodeEventHandler
 from security import verify_webhook_signature
 from task_queue import enqueue_task
 

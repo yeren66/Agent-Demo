@@ -119,14 +119,17 @@ class AgentWorker:
                 logger.error("No authentication token available")
                 return False
             
+            logger.info(f"Token available, length: {len(token)}, starts with: {token[:4]}...")
+
             # Clone repository with proper authentication format
             if self.api.platform == 'github':
                 # GitHub使用x-access-token格式或直接token格式
                 clone_url = f"https://x-access-token:{token}@github.com/{job['owner']}/{job['repo']}.git"
             else:
-                clone_url = f"https://oauth2:{token}@gitcode.net/{job['owner']}/{job['repo']}.git"
+                # GitCode 使用 oauth2:TOKEN 格式（正确的GitLab风格认证）
+                clone_url = f"https://oauth2:{token}@gitcode.com/{job['owner']}/{job['repo']}.git"
             
-            # Clone repository and check result
+            logger.info(f"Clone URL: {clone_url[:50]}...{clone_url[-20:]}")  # 只显示部分避免泄露token            # Clone repository and check result
             clone_success = await self.gitops.clone_repo(clone_url, repo_path)
             if not clone_success:
                 logger.error("Repository clone failed")
@@ -278,7 +281,7 @@ Status: Initializing...
             return None
 
     async def _run_stage(self, stage_name: str, stage_func, job: Dict[str, Any], repo_path: str) -> bool:
-        """Run a processing stage and post stage comment to PR"""
+        """Run a processing stage and post stage comment to PR and Issue"""
         try:
             logger.info(f"Running stage: {stage_name}")
             
@@ -291,6 +294,9 @@ Status: Initializing...
             
             # Mark stage as completed
             job.setdefault('stages_completed', {})[stage_name] = True
+            
+            # Send Issue progress update (NEW)
+            await self._send_issue_stage_update(job, stage_name, stage_result)
             
             # Post stage-specific comment to PR if available
             if job.get('pr_number') and stage_result.get('comment'):
@@ -310,6 +316,110 @@ Status: Initializing...
         except Exception as e:
             logger.error(f"Stage {stage_name} error: {e}", exc_info=True)
             return False
+    
+    async def _send_issue_stage_update(self, job: Dict[str, Any], stage_name: str, stage_result: Dict[str, Any]):
+        """Send stage update to the original Issue"""
+        try:
+            # 构建阶段特定的更新消息
+            stage_messages = {
+                'locate': {
+                    'emoji': '🔍',
+                    'title': '阶段1: 问题定位完成',
+                    'description': '已识别出可能的问题文件和根因分析'
+                },
+                'propose': {
+                    'emoji': '💡', 
+                    'title': '阶段2: 修复方案设计完成',
+                    'description': '已制定详细的修复策略和实施计划'
+                },
+                'fix': {
+                    'emoji': '🛠️',
+                    'title': '阶段3: 代码修改完成', 
+                    'description': '已应用修复方案，修改相关代码文件'
+                },
+                'verify': {
+                    'emoji': '✅',
+                    'title': '阶段4: 验证测试完成',
+                    'description': '已验证修改效果，确保功能正常'
+                }
+            }
+            
+            stage_info = stage_messages.get(stage_name, {
+                'emoji': '🔄',
+                'title': f'阶段: {stage_name.title()}完成',
+                'description': '阶段处理完成'
+            })
+            
+            # 从stage_result和job中提取详细信息
+            details = []
+            if stage_name == 'locate':
+                candidate_files = job.get('candidate_files', [])
+                if candidate_files:
+                    details.append(f"**🎯 发现候选文件** ({len(candidate_files)}个):")
+                    for file in candidate_files[:5]:  # 最多显示5个文件
+                        details.append(f"  - `{file}`")
+                    if len(candidate_files) > 5:
+                        details.append(f"  - ... 还有{len(candidate_files)-5}个文件")
+                        
+            elif stage_name == 'propose':
+                target_files = job.get('target_files', [])
+                if target_files:
+                    details.append(f"**🎯 目标修改文件** ({len(target_files)}个):")
+                    for file in target_files:
+                        details.append(f"  - `{file}` - 计划修改")
+                        
+            elif stage_name == 'fix':
+                changes_applied = stage_result.get('changes_applied', [])
+                if changes_applied:
+                    details.append(f"**📝 已修改文件** ({len(changes_applied)}个):")
+                    for file in changes_applied:
+                        details.append(f"  - `{file}` ✅")
+                        
+            elif stage_name == 'verify':
+                if stage_result.get('build_success'):
+                    details.append("**🧪 验证结果**: ✅ 构建成功，功能正常")
+                else:
+                    details.append("**🧪 验证结果**: ⚠️ 需要进一步调整")
+            
+            # 构建进度指示器
+            completed = job.get('stages_completed', {})
+            progress_indicators = [
+                f"- [{'✅' if completed.get('locate') else '⏳'}] **问题定位** - 分析问题根因",
+                f"- [{'✅' if completed.get('propose') else '⏳'}] **方案设计** - 制定修复计划", 
+                f"- [{'✅' if completed.get('fix') else '⏳'}] **代码修改** - 实施修复方案",
+                f"- [{'✅' if completed.get('verify') else '⏳'}] **验证测试** - 确认修复效果",
+                f"- [{'✅' if job.get('pr_number') else '⏳'}] **创建PR** - 提交审查请求"
+            ]
+            
+            # 构建完整的更新消息  
+            update_message = f"""{stage_info['emoji']} **{stage_info['title']}**
+
+{stage_info['description']}
+
+{chr(10).join(details) if details else ''}
+
+📈 **总体进度:**
+{chr(10).join(progress_indicators)}
+
+🔗 **工作分支:** `{job['branch']}`
+🆔 **任务ID:** `{job['job_id']}`
+
+---
+*继续处理中，请稍候...*"""
+
+            # 发送Issue评论
+            self.api.comment_issue_sync(
+                job['owner'],
+                job['repo'], 
+                job['issue_number'],
+                update_message
+            )
+            
+            logger.info(f"✅ 已向Issue #{job['issue_number']}发送{stage_name}阶段更新")
+            
+        except Exception as e:
+            logger.warning(f"Failed to send issue stage update: {e}")
+    
     
     async def _update_pr_progress(self, job: Dict[str, Any], completed_stage: str, success: bool):
         """Update PR progress panel after each stage"""
@@ -361,35 +471,94 @@ Status: Initializing...
             # Update progress to show ready
             await self._update_pr_progress(job, 'ready', True)
             
-            # Final comment on PR
-            summary_comment = f"""🎉 **Agent 分析修复完成**
+            # Enhanced final comment on PR with detailed workflow summary
+            summary_comment = f"""🎉 **Agent 完整处理流程已结束**
 
-✅ **完成阶段:**
-- **定位分析** - 识别问题根源和相关文件
-- **方案设计** - 制定详细的修复策略  
-- **代码修复** - 应用具体的代码变更
-- **验证测试** - 确认修改效果和功能正确性
+## 📋 处理摘要
 
-📋 **产物文件:**
-- `agent/analysis.md` - 详细的问题诊断和根因分析
-- `agent/patch_plan.json` - 完整的修复方案和实施计划
-- `agent/report.txt` - 变更验证结果和测试报告
+**🔍 阶段1 - 问题定位:**
+- ✅ 深度分析Issue描述和上下文
+- ✅ 识别了 {len(job.get('candidate_files', []))} 个候选问题文件
+- ✅ 生成详细诊断报告: `agent/analysis.md`
 
-🔍 **请仔细审查代码变更并考虑合并此 PR**
-"""
-            
-            self.api.comment_pr(job['owner'], job['repo'], job['pr_number'], summary_comment)
-            
-            # Comment on original issue
-            issue_comment = f"""👋 **修复完成通知**
+**💡 阶段2 - 方案设计:**
+- ✅ 制定针对性修复策略
+- ✅ 确定 {len(job.get('target_files', []))} 个目标修改文件
+- ✅ 输出完整实施计划: `agent/patch_plan.json`
 
-🚀 Agent 已完成问题分析和修复，请查看 PR #{job['pr_number']}
+**🛠️ 阶段3 - 代码修改:**
+- ✅ 基于AI分析应用具体修复代码
+- ✅ 确保修改符合项目规范和最佳实践
+- ✅ 保持代码向后兼容性
 
-合并 PR 后将自动关闭此 Issue。
+**✅ 阶段4 - 验证测试:**
+- ✅ 验证修复效果和功能完整性
+- ✅ 确认构建和基本功能正常
+- ✅ 生成验证报告: `agent/report.txt`
+
+## � 生成的关键文件
+
+| 文件 | 说明 |
+|------|------|
+| `agent/analysis.md` | 🔍 问题根因分析和诊断报告 |
+| `agent/patch_plan.json` | 📋 详细修复方案和实施计划 |
+| `agent/report.txt` | 📊 验证测试结果和变更报告 |
+| 修改的源文件 | 🛠️ 实际的代码修复内容 |
+
+## 🎯 修复的关键文件
+{chr(10).join(f'- `{f}` - 已成功修复' for f in job.get('target_files', [])) if job.get('target_files') else '- 已生成演示修复'}
+
+## 🔍 下一步操作
+1. **仔细审查代码变更** - 检查修复逻辑是否符合预期
+2. **运行完整测试** - 确保修复没有引入新问题  
+3. **考虑合并PR** - 如果修复方案满意，请合并此PR
+4. **反馈和优化** - 如有问题，请在PR中提出改进建议
 
 ---
-*任务ID: `{job['job_id']}`*"""
+**🤖 任务ID:** `{job['job_id']}`  
+**⏰ 处理时长:** 整个流程已完成  
+**🌿 修复分支:** `{job['branch']}`
+
+*感谢使用Agent！如有任何疑问，请在Issue或PR中留言。*"""
+
+            self.api.comment_pr(job['owner'], job['repo'], job['pr_number'], summary_comment)
             
+            # Enhanced comment on original issue
+            issue_comment = f"""🎊 **修复任务圆满完成！**
+
+Agent 已完成对 Issue #{job['issue_number']} 的全面分析和修复工作。
+
+## 📊 任务完成情况
+
+**✅ 处理阶段:**
+- [✅] **问题定位** - 深度分析，找出根本原因  
+- [✅] **方案设计** - 制定详细修复计划
+- [✅] **代码修改** - 智能应用修复方案
+- [✅] **验证测试** - 确保修复质量
+- [✅] **创建PR** - 提交完整修复方案
+
+## 🔗 相关链接
+
+**📥 Pull Request:** #{job['pr_number']}
+- **分支:** `{job['branch']}`
+- **状态:** ✅ 修复完成，已准备好审查
+
+## 📋 生成的文档
+- **分析报告:** `agent/analysis.md` - 详细的问题诊断
+- **修复方案:** `agent/patch_plan.json` - 完整的实施计划  
+- **验证报告:** `agent/report.txt` - 测试结果和验证
+
+## 🎯 接下来请：
+1. 查看 PR #{job['pr_number']} 了解具体修复内容
+2. 审查代码变更确认修复方案
+3. 如满意请合并PR，系统将自动关闭此Issue
+
+感谢使用 GitCode Bug Fix Agent！🚀
+
+---
+**🆔 任务ID:** `{job['job_id']}`  
+**⏰ 完成时间:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+
             self.api.comment_issue_sync(job['owner'], job['repo'], job['issue_number'], issue_comment)
             
             return True

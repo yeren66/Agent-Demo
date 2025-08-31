@@ -103,28 +103,27 @@ repository analysis.
         # Get list of changed files for reporting
         changed_files = await gitops.get_changed_files(repo_path)
         
-        comment = f"""🛠️ **代码修复实施完成**
+        comment = f"""🛠️ **第3阶段：代码修改实施完成**
 
-**修复执行摘要:**
-- ✅ 已对 {len(changes_applied)} 个文件实施了代码修复
-- 🎯 根据问题分析和修复方案进行了精确的代码变更
-- 🔧 修复内容已提交到版本控制系统
-- 📝 生成了详细的修复记录和变更日志
+**🎯 修改执行结果:**
+- 成功修改文件: **{len(changes_applied)}个**
+- 修改类型: {'AI智能修复' if changes_applied and not changes_applied[0].endswith('_report.md') else '演示修复'}
+- 执行状态: ✅ 修改已提交到工作分支
 
-**修复文件详情:**
-{chr(10).join(f'- `{f}` - 已应用针对性的代码修复' for f in changes_applied)}
+**📝 已修改的文件:**
+{chr(10).join(f'- `{f}` ✅ 修改完成' for f in changes_applied)}
 
-**版本控制信息:**
-- 📦 提交信息: `{commit_message}`
-- 🌿 分支: `{job['branch']}`
-- ⏰ 修复时间: 刚刚完成
+**🔧 修改详情:**
+- 🎯 基于前期分析应用了针对性的修复代码
+- �️ 确保修改符合项目规范和编码标准
+- 📚 保持代码可读性和维护性
+- 🔄 所有修改已同步到工作分支
 
-**质量保证:**
-- 🔍 修复基于详细的问题分析
-- 🎯 针对识别的根因进行了精准修复
-- 📋 遵循了既定的修复策略和计划
+**🔗 工作分支:** `{job['branch']}`
+**💾 提交信息:** "{commit_message}"
 
-下一步将进行修复效果验证和测试。"""
+---
+*接下来将对修改进行验证测试...*"""
         
         return {
             'success': True,

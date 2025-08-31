@@ -11,33 +11,67 @@ def render_progress_panel(issue_number: int, actor: str, job_id: str,
                          initialized: bool = False, locate: bool = False, 
                          propose: bool = False, fix: bool = False, 
                          verify: bool = False, ready: bool = False) -> str:
-    """Render PR progress panel"""
+    """Render PR progress panel with enhanced visual design"""
     
-    def checkbox(checked: bool) -> str:
-        return 'x' if checked else ' '
+    def stage_status(completed: bool, in_progress: bool = False) -> str:
+        if completed:
+            return '✅'
+        elif in_progress:
+            return '🔄'
+        else:
+            return '⏳'
     
-    panel = f"""## 🤖 Agent Progress
+    # Determine current stage for in-progress indicator
+    current_stage = None
+    if not locate:
+        current_stage = 'locate'
+    elif not propose:
+        current_stage = 'propose'  
+    elif not fix:
+        current_stage = 'fix'
+    elif not verify:
+        current_stage = 'verify'
+    elif not ready:
+        current_stage = 'ready'
+    
+    panel = f"""## 🤖 GitCode Bug Fix Agent - 处理进度
 
-- [{checkbox(initialized)}] **Initialized** - Repository and branch setup
-- [{checkbox(locate)}] **Locate** - Identify problem files and root cause
-- [{checkbox(propose)}] **Propose** - Generate detailed fix strategy
-- [{checkbox(fix)}] **Fix** - Apply code modifications
-- [{checkbox(verify)}] **Verify** - Validate changes and test results
-- [{checkbox(ready)}] **Ready** - Complete and ready for review
+### 📊 实时进度跟踪
 
-### 📋 Task Info
-- **Issue:** #{issue_number}
-- **Triggered by:** @{actor}
-- **Job ID:** `{job_id}`
-- **Created:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
+| 阶段 | 状态 | 描述 | 完成时间 |
+|------|------|------|----------|
+| 🔍 **问题定位** | {stage_status(locate, current_stage == 'locate')} | 深度分析问题，识别相关文件 | {'✓' if locate else '-'} |
+| 💡 **方案设计** | {stage_status(propose, current_stage == 'propose')} | 制定详细修复策略和计划 | {'✓' if propose else '-'} |
+| 🛠️ **代码修改** | {stage_status(fix, current_stage == 'fix')} | 实施代码修复和优化 | {'✓' if fix else '-'} |
+| ✅ **验证测试** | {stage_status(verify, current_stage == 'verify')} | 功能测试和质量验证 | {'✓' if verify else '-'} |
+| 🎯 **准备完成** | {stage_status(ready, current_stage == 'ready')} | 修复完成，准备代码审查 | {'✓' if ready else '-'} |
 
-### 📁 Generated Files
-- `agent/analysis.md` - Detailed problem analysis and diagnosis
-- `agent/patch_plan.json` - Comprehensive fix strategy and implementation plan
-- `agent/report.txt` - Verification results and change validation
+### 📋 任务详情
+
+```
+📝 Issue编号    : #{issue_number}
+👤 触发用户     : @{actor}  
+🆔 任务ID      : {job_id}
+⏰ 创建时间     : {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
+🔄 当前状态     : {'🎉 处理完成' if ready else f'🔄 正在{current_stage}阶段' if current_stage else '🚀 启动中'}
+```
+
+### 📁 生成的文档和报告
+
+{('✅' if locate else '⏳')} **`agent/analysis.md`** - 问题诊断和根因分析报告
+{('✅' if propose else '⏳')} **`agent/patch_plan.json`** - 完整修复策略和实施计划  
+{('✅' if verify else '⏳')} **`agent/report.txt`** - 验证测试结果和质量报告
+
+### 🚀 AI驱动的智能修复
+
+- **🧠 AI分析**: 使用大语言模型进行深度问题分析
+- **🎯 精准定位**: 智能识别问题文件和修复点
+- **🛡️ 质量保证**: 确保修复方案的安全性和兼容性
+- **📊 全程追踪**: 每个阶段都有详细进度反馈
 
 ---
-*🚀 Automated bug analysis and fix by Agent*"""
+*� 本修复由 [GitCode Bug Fix Agent](https://gitcode.com) 自动生成*
+*💬 如有疑问或建议，请在Issue或PR中留言反馈*"""
     
     return panel
 
