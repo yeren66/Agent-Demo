@@ -4,6 +4,13 @@
 
 ## ✨ 功能演示
 
+
+https://github.com/user-attachments/assets/edd491af-8844-4ccd-8aad-f24f64a0953b
+
+gitcode示例在gitcode分支：
+
+https://github.com/user-attachments/assets/bb313b98-c304-4355-b252-9cc1dd3d2411
+
 用户在 Issue 中输入：
 ```
 @your-agent-name 这个登录功能有 bug，请帮忙修复
